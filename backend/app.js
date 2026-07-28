@@ -1,7 +1,9 @@
 const createError = require('http-errors');
 const express = require('express');
+const logger = require('morgan');
 const path = require('path');
 const cookieParser = require('cookie-parser');
+const cors = require('cors');
 const app = express();
 const errorHandler = require('./middlewares/errorHandler.js');
 
@@ -14,7 +16,7 @@ app.options('*', cors(corsOptions));
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 
-
+app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());

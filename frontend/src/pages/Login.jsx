@@ -1,13 +1,20 @@
 import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { validateEmail } from '../utils/taskValidation';
 import { CheckSquare } from 'lucide-react';
 
-export default function Login({ onLogin }) {
+export default function Login() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
+  const [apiError, setApiError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const newErrors = {};
 
@@ -15,10 +22,10 @@ export default function Login({ onLogin }) {
     if (!email) {
       newErrors.email = 'Email address is required.';
     } else if (!validateEmail(email)) {
-      newErrors.email = 'Please provide a valid email format (e.g. name@domain.com).';
+      newErrors.email = 'Please provide a valid email format.';
     }
 
-    // Validate password formatting (demo requirements)
+    // Validate password formatting
     if (!password) {
       newErrors.password = 'Password is required.';
     } else if (password.length < 6) {
@@ -30,9 +37,18 @@ export default function Login({ onLogin }) {
       return;
     }
 
-    // Clear validation errors and trigger simple mock login navigation hook
     setErrors({});
-    onLogin();
+    setApiError('');
+    setIsSubmitting(true);
+
+    try {
+      await login(email, password);
+      navigate('/dashboard');
+    } catch (err) {
+      setApiError(err.message || 'Login failed. Please verify your credentials.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -52,11 +68,12 @@ export default function Login({ onLogin }) {
           </p>
         </div>
 
-        {/* Demo Credentials Notice */}
-        <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3.5 text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-850">
-
-          <p className="mt-1">Use this email and password<code className="bg-slate-200 dark:bg-slate-700 px-1 rounded text-slate-900 dark:text-slate-100">demo@example.com</code> / <code className="bg-slate-200 dark:bg-slate-700 px-1 rounded text-slate-900 dark:text-slate-100">123456</code></p>
-        </div>
+        {/* API Error Box */}
+        {apiError && (
+          <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900">
+            {apiError}
+          </div>
+        )}
 
         {/* Form Container */}
         <form className="mt-6 space-y-5" onSubmit={handleSubmit} noValidate>
@@ -75,9 +92,10 @@ export default function Login({ onLogin }) {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${errors.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500 dark:focus:ring-red-500' : ''
+              className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${errors.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : ''
                 }`}
               placeholder="you@example.com"
+              disabled={isSubmitting}
               aria-invalid={!!errors.email}
               aria-describedby={errors.email ? "email-error" : undefined}
             />
@@ -90,12 +108,20 @@ export default function Login({ onLogin }) {
 
           {/* Password input field */}
           <div className="space-y-1.5">
-            <label
-              htmlFor="password"
-              className="block text-sm font-semibold text-slate-700 dark:text-slate-300"
-            >
-              Password
-            </label>
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor="password"
+                className="block text-sm font-semibold text-slate-700 dark:text-slate-300"
+              >
+                Password
+              </label>
+              <Link
+                to="/forgot-password"
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <input
               id="password"
               name="password"
@@ -103,9 +129,10 @@ export default function Login({ onLogin }) {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${errors.password ? 'border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500 dark:focus:ring-red-500' : ''
+              className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${errors.password ? 'border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : ''
                 }`}
               placeholder="••••••••"
+              disabled={isSubmitting}
               aria-invalid={!!errors.password}
               aria-describedby={errors.password ? "password-error" : undefined}
             />
@@ -119,11 +146,19 @@ export default function Login({ onLogin }) {
           {/* Action button */}
           <button
             type="submit"
-            className="flex w-full justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 focus-visible:outline-none min-h-[44px]"
+            disabled={isSubmitting}
+            className="flex w-full justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 focus-visible:outline-none min-h-[44px] disabled:opacity-50"
           >
-            Continue to Dashboard
+            {isSubmitting ? 'Signing in...' : 'Continue to Dashboard'}
           </button>
         </form>
+
+        <div className="text-center text-sm text-slate-500 dark:text-slate-400 mt-4">
+          Don't have an account?{' '}
+          <Link to="/register" className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+            Sign Up
+          </Link>
+        </div>
       </div>
     </div>
   );

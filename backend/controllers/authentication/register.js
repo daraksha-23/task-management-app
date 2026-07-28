@@ -2,14 +2,17 @@ const createHttpError = require('http-errors');
 const User = require('../../models/User');
 const { generateAccessToken, generateRefreshToken } = require('../../utils/jwt');
 
-const login = async ({ email, password }) => {
- 
-  const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
-  if (!user)  throw createHttpError(401, 'Invalid email or password');
+const register = async ({ username, email, password }) => {
 
-  const isMatch = await user.matchPassword(password);
-  if (!isMatch)  throw createHttpError(401, 'Invalid email or password');
- 
+  const existingUser = await User.findOne({$and: [{ email: email.toLowerCase() }, { username }],});
+  if (existingUser)   throw createHttpError(400, 'User is already registered');
+  
+  const user = await User.create({
+    username,
+    email: email.toLowerCase(),
+    password,
+  });
+
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
   user.refreshToken = refreshToken;
@@ -26,4 +29,4 @@ const login = async ({ email, password }) => {
   };
 };
 
-module.exports = login;
+module.exports = register;
