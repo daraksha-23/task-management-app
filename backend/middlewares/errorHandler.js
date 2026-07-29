@@ -11,6 +11,7 @@ function errorHandler(err, req, res, next) {
         status,
         statusText: http.STATUS_CODES[status],
         message: err.message || 'Internal Server Error',
+        errors: err.errors || undefined,
         error: process.env.NODE_ENV === 'development'
             ? err
             : undefined
