@@ -1,31 +1,24 @@
 const createHttpError = require('http-errors');
 
-const validate = (schema) => (req, res, next) => {
-  const result = schema.safeParse(req.body);
+const validate = (schema, source = 'body') => {
+  return (req, res, next) => {
+    const result = schema.safeParse(req[source]);
 
-  if (!result.success) {
-    const errors = result.error.issues.reduce((acc, issue) => {
-      const field = issue.path.join('.');
+    if (!result.success) {
+      const errors = result.error.issues.reduce((accumulator, issue) => {
+        const field = issue.path.join('.') || source;
 
-      if (!acc[field]) {
-        acc[field] = issue.message;
-      }
+        if (!accumulator[field]) {
+          accumulator[field] = issue.message;
+        }
+        return accumulator;
+      }, {});
 
-      return acc;
-    }, {});
-
-    return next(
-      createHttpError(422, {
-        message: 'Validation failed',
-        errors,
-      })
-    );
-  }
-
-  // Replace request body with validated + sanitized data
-  req.body = result.data;
-
-  next();
+      return next(createHttpError(422, {message: 'Validation failed',errors,}));
+    }
+    req[source] = result.data;
+    next();
+  };
 };
 
 module.exports = validate;

@@ -1,15 +1,15 @@
- const status = {
+ const TASK_STATUS = {
   PENDING : "pending",
   COMPLETED : "completed"
 }
 
-const priority = {
+const TASK_PRIORITY = {
   LOW : "low",
   MEDIUM : "medium",
   HIGH : "high"
 }
 
 module.exports = {
-    status,
-    priority
+    TASK_STATUS,
+    TASK_PRIORITY
 }

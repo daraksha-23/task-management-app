@@ -4,7 +4,7 @@ const { generateAccessToken, generateRefreshToken } = require('../../utils/jwt')
 
 const register = async ({ username, email, password }) => {
 
-  const existingUser = await User.findOne({$and: [{ email: email.toLowerCase() }, { username }],});
+  const existingUser = await User.findOne({ email: email.toLowerCase()});
   if (existingUser)   throw createHttpError(400, 'User is already registered');
   
   const user = await User.create({

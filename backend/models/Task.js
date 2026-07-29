@@ -1,4 +1,3 @@
-// need to make changes before making apis 
 const mongoose = require('mongoose');
 const taskConstants = require('../constants/task.constants.js')
 const TaskSchema = mongoose.Schema(
@@ -14,38 +13,33 @@ const TaskSchema = mongoose.Schema(
             type: String,
             required: true,
             trim: true,
-            maxlength: 150,
-            lowercase: true
+            maxlength: [150, 'Title cannot exceed 150 characters']
         },
 
         description: {
             type: String,
             trim: true,
-            lowercase: true,
-            maxlength: 2000,
+            maxlength: [2000, 'Description cannot exceed 2000 characters'],
             default: ''
         },
 
         status: {
             type: String,
-            enum: Object.values(taskConstants.status),
-            default: taskConstants.status.PENDING,
+            enum: Object.values(taskConstants.TASK_STATUS),
+            default: taskConstants.TASK_STATUS.PENDING,
         },
 
         priority: {
             type: String,
-            enum: Object.values(taskConstants.priority),
-            default: taskConstants.priority.MEDIUM,
+            enum: Object.values(taskConstants.TASK_PRIORITY),
+            default: taskConstants.TASK_PRIORITY.MEDIUM,
         },
         dueDate: {
             type: Date,
-            trim: true,
             default: null
         },
         order: {
             type: Number,
-            required: true,
-            trim: true,
             default: 0,
             min:0
         }
@@ -54,6 +48,9 @@ const TaskSchema = mongoose.Schema(
     { timestamps: true }
 )
 
+TaskSchema.index({ user: 1, order: 1 });
+TaskSchema.index({ user: 1, status: 1 });
+TaskSchema.index({ user: 1, priority: 1 });
 
 module.exports = mongoose.model('Task', TaskSchema);
 

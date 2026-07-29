@@ -9,7 +9,7 @@ const authenticate = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
 
-    const user = await User.findById(decoded.id).select('_id username email ');
+    const user = await User.findById(decoded.id).select('_id username email isActive ');
     if (!user) throw createHttpError(404, 'User not found');
     // account status checks
     if (user.isActive === false) throw createHttpError(403, 'Your account has been deactivated');
