@@ -1,287 +1,247 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import api, { getApiError, setAccessToken } from '../services/api';
 
 const AuthContext = createContext(null);
 
-const API_BASE_URL = 'http://localhost:3000/api/v1';
+const ACCESS_TOKEN_KEY = 'accessToken';
+const REFRESH_TOKEN_KEY = 'refreshToken';
+
+function saveTokens(accessToken, refreshToken) {
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  setAccessToken(accessToken);
+}
+
+function clearTokens() {
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  setAccessToken(null);
+}
+
+function createAuthError(error) {
+  const apiError = getApiError(error);
+  const normalizedError = new Error(apiError.message);
+
+  normalizedError.errors = apiError.errors;
+  normalizedError.status = apiError.status;
+
+  return normalizedError;
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(() => localStorage.getItem('accessToken'));
-  const [refreshToken, setRefreshToken] = useState(() => localStorage.getItem('refreshToken'));
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  // Authenticated fetch helper
-  const apiFetch = useCallback(async (endpoint, options = {}) => {
-    const headers = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
+  const refreshSession = useCallback(async () => {
+    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
 
-    const currentToken = localStorage.getItem('accessToken');
-    if (currentToken) {
-      headers['Authorization'] = `Bearer ${currentToken}`;
-    }
-
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers,
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      const errorMsg = result.message || 'Something went wrong';
-      throw new Error(errorMsg);
-    }
-
-    return result;
-  }, []);
-
-  // Refresh Token Function
-  const refreshTokens = useCallback(async () => {
-    const currentRefreshToken = localStorage.getItem('refreshToken');
-    if (!currentRefreshToken) {
+    if (!refreshToken) {
       throw new Error('No refresh token available');
     }
 
-    try {
-      const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ refreshToken: currentRefreshToken }),
-      });
-
-      const result = await res.json();
-      if (!res.ok) {
-        throw new Error(result.message || 'Token refresh failed');
-      }
-
-      const { accessToken, refreshToken: newRefreshToken } = result.data;
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', newRefreshToken);
-      setToken(accessToken);
-      setRefreshToken(newRefreshToken);
-      return accessToken;
-    } catch (err) {
-      // Clear auth on refresh failure
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      setToken(null);
-      setRefreshToken(null);
-      setUser(null);
-      throw err;
-    }
-  }, []);
-
-  // Profile Fetching Function
-  const fetchProfile = useCallback(async (tokenToUse) => {
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${tokenToUse}`,
-    };
-
-    const res = await fetch(`${API_BASE_URL}/auth/profile`, {
-      headers,
+    const response = await api.post('/auth/refresh', {
+      refreshToken,
     });
-    const result = await res.json();
-    if (!res.ok) {
-      throw new Error(result.message || 'Failed to fetch profile');
-    }
-    setUser(result.data.user);
+
+    const {
+      accessToken,
+      refreshToken: newRefreshToken,
+    } = response.data.data;
+
+    saveTokens(accessToken, newRefreshToken);
+
+    return accessToken;
   }, []);
 
-  // Login
+  const getProfile = useCallback(async () => {
+    const response = await api.get('/auth/profile');
+    const currentUser = response.data.data.user;
+
+    setUser(currentUser);
+
+    return currentUser;
+  }, []);
+
   const login = async (email, password) => {
-    setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+      const response = await api.post('/auth/login', {
+        email,
+        password,
       });
 
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.message || 'Login failed');
-      }
+      const {
+        user: authenticatedUser,
+        accessToken,
+        refreshToken,
+      } = response.data.data;
 
-      const { accessToken, refreshToken: newRefreshToken, user: userData } = result.data;
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', newRefreshToken);
-      setToken(accessToken);
-      setRefreshToken(newRefreshToken);
-      setUser(userData);
-      return result;
-    } catch (err) {
-      setError(err.message);
-      throw err;
+      saveTokens(accessToken, refreshToken);
+      setUser(authenticatedUser);
+
+      return response.data;
+    } catch (error) {
+      throw createAuthError(error);
     }
   };
 
-  // Register
   const register = async (username, email, password) => {
-    setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, email, password }),
+      const response = await api.post('/auth/register', {
+        username,
+        email,
+        password,
       });
 
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.message || 'Registration failed');
-      }
+      const {
+        user: registeredUser,
+        accessToken,
+        refreshToken,
+      } = response.data.data;
 
-      const { accessToken, refreshToken: newRefreshToken, user: userData } = result.data;
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', newRefreshToken);
-      setToken(accessToken);
-      setRefreshToken(newRefreshToken);
-      setUser(userData);
-      return result;
-    } catch (err) {
-      setError(err.message);
-      throw err;
+      saveTokens(accessToken, refreshToken);
+      setUser(registeredUser);
+
+      return response.data;
+    } catch (error) {
+      throw createAuthError(error);
     }
   };
 
-  // Logout
   const logout = async () => {
-    setError(null);
     try {
-      await apiFetch('/auth/logout', { method: 'POST' });
-    } catch (err) {
-      console.warn('API logout failed, performing local logout:', err.message);
+      const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+
+      if (accessToken) {
+        setAccessToken(accessToken);
+        await api.post('/auth/logout');
+      }
+    } catch {
+      // Local logout must still happen if the server is unavailable.
     } finally {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      setToken(null);
-      setRefreshToken(null);
+      clearTokens();
       setUser(null);
     }
   };
 
-  // Forgot Password
   const forgotPassword = async (email) => {
-    setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
+      const response = await api.post('/auth/forgot-password', {
+        email,
       });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.message || 'Failed to send recovery email');
-      }
-      return result;
-    } catch (err) {
-      setError(err.message);
-      throw err;
+
+      return response.data;
+    } catch (error) {
+      throw createAuthError(error);
     }
   };
 
-  // Reset Password
-  const resetPassword = async (tokenParam, password) => {
-    setError(null);
+  const resetPassword = async (resetToken, password) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/reset-password/${tokenParam}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ password }),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.message || 'Password reset failed');
-      }
-      return result;
-    } catch (err) {
-      setError(err.message);
-      throw err;
+      const response = await api.post(
+        `/auth/reset-password/${encodeURIComponent(resetToken)}`,
+        { password }
+      );
+
+      return response.data;
+    } catch (error) {
+      throw createAuthError(error);
     }
   };
 
-  // Change Password
   const changePassword = async (currentPassword, newPassword) => {
-    setError(null);
     try {
-      return await apiFetch('/auth/change-password', {
-        method: 'POST',
-        body: JSON.stringify({ currentPassword, newPassword }),
+      const response = await api.post('/auth/change-password', {
+        currentPassword,
+        newPassword,
       });
-    } catch (err) {
-      setError(err.message);
-      throw err;
+
+      return response.data;
+    } catch (error) {
+      throw createAuthError(error);
     }
   };
 
-  // Initialize Auth State on Mount
   useEffect(() => {
-    const initializeAuth = async () => {
-      const currentToken = localStorage.getItem('accessToken');
-      if (currentToken) {
-        try {
-          await fetchProfile(currentToken);
-        } catch (err) {
-          // Token might be expired, attempt refresh
+    let active = true;
+
+    async function initializeAuthentication() {
+      const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+
+      try {
+        if (accessToken) {
+          setAccessToken(accessToken);
+
           try {
-            const newToken = await refreshTokens();
-            await fetchProfile(newToken);
-          } catch (refreshErr) {
-            console.warn('Session expired. User must log in again.');
+            await getProfile();
+          } catch (error) {
+            if (error.response?.status !== 401) {
+              throw error;
+            }
+
+            await refreshSession();
+            await getProfile();
           }
+        } else if (localStorage.getItem(REFRESH_TOKEN_KEY)) {
+          await refreshSession();
+          await getProfile();
         }
-      } else {
-        // Try refreshing token if access token is missing but refresh exists
-        const currentRefreshToken = localStorage.getItem('refreshToken');
-        if (currentRefreshToken) {
-          try {
-            const newToken = await refreshTokens();
-            await fetchProfile(newToken);
-          } catch (refreshErr) {
-            console.warn('Silent refresh failed.');
-          }
+      } catch {
+        clearTokens();
+
+        if (active) {
+          setUser(null);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
         }
       }
-      setLoading(false);
+    }
+
+    initializeAuthentication();
+
+    return () => {
+      active = false;
     };
+  }, [getProfile, refreshSession]);
 
-    initializeAuth();
-  }, [fetchProfile, refreshTokens]);
+  const contextValue = useMemo(
+    () => ({
+      user,
+      loading,
+      isAuthenticated: Boolean(user),
+      login,
+      register,
+      logout,
+      forgotPassword,
+      resetPassword,
+      changePassword,
+      getProfile,
+    }),
+    [user, loading, getProfile]
+  );
 
-  const value = {
-    user,
-    token,
-    loading,
-    error,
-    login,
-    register,
-    logout,
-    forgotPassword,
-    resetPassword,
-    changePassword,
-    apiFetch,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={contextValue}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
   const context = useContext(AuthContext);
+
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth must be used inside AuthProvider');
   }
+
   return context;
 }

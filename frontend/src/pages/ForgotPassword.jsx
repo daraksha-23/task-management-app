@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { validateEmail } from '../utils/taskValidation';
 import { CheckSquare, Mail, Loader2 } from 'lucide-react';
 
+import Alert from '../components/ui/Alert';
+
 export default function ForgotPassword() {
   const { forgotPassword } = useAuth();
   
@@ -37,6 +39,9 @@ export default function ForgotPassword() {
       await forgotPassword(email);
       setSuccessMsg('A password reset link has been sent to your email.');
     } catch (err) {
+      if (err.errors && Object.keys(err.errors).length > 0) {
+        setErrors(err.errors);
+      }
       setApiError(err.message || 'Failed to send reset link. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -62,17 +67,19 @@ export default function ForgotPassword() {
 
         {/* Success Alert */}
         {successMsg && (
-          <div className="rounded-lg bg-green-50 dark:bg-green-950/30 p-3.5 text-sm text-green-600 dark:text-green-400 border border-green-200 dark:border-green-900 flex items-start gap-2.5" role="alert">
-            <Mail className="h-5 w-5 shrink-0 text-green-500" />
-            <span>{successMsg}</span>
-          </div>
+          <Alert
+            variant="success"
+            message={successMsg}
+          />
         )}
 
         {/* API Error Alert */}
         {apiError && (
-          <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900" role="alert">
-            {apiError}
-          </div>
+          <Alert
+            variant="error"
+            message={apiError}
+            onClose={() => setApiError('')}
+          />
         )}
 
         {/* Form */}

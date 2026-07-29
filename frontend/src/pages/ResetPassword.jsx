@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { CheckSquare, Loader2, CheckCircle2 } from 'lucide-react';
 
+import Alert from '../components/ui/Alert';
+
 export default function ResetPassword() {
   const { token } = useParams();
   const { resetPassword } = useAuth();
@@ -41,6 +43,9 @@ export default function ResetPassword() {
       await resetPassword(token, password);
       setSuccessMsg('Your password has been successfully reset.');
     } catch (err) {
+      if (err.errors && Object.keys(err.errors).length > 0) {
+        setErrors(err.errors);
+      }
       setApiError(err.message || 'Failed to reset password. The link may have expired.');
     } finally {
       setIsSubmitting(false);
@@ -66,18 +71,20 @@ export default function ResetPassword() {
 
         {/* Success Alert */}
         {successMsg && (
-          <div className="rounded-lg bg-green-50 dark:bg-green-950/30 p-4 text-sm text-green-600 dark:text-green-400 border border-green-200 dark:border-green-900 text-center flex flex-col items-center gap-2" role="alert">
-            <CheckCircle2 className="h-8 w-8 text-green-500" />
-            <p className="font-semibold">{successMsg}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">You can now sign in using your new credentials.</p>
-          </div>
+          <Alert
+            variant="success"
+            title={successMsg}
+            message="You can now sign in using your new credentials."
+          />
         )}
 
         {/* API Error Box */}
         {apiError && (
-          <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900" role="alert">
-            {apiError}
-          </div>
+          <Alert
+            variant="error"
+            message={apiError}
+            onClose={() => setApiError('')}
+          />
         )}
 
         {/* Form */}

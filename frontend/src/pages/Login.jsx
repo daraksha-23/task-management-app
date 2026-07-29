@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { validateEmail } from '../utils/taskValidation';
 import { CheckSquare } from 'lucide-react';
 
+import Alert from '../components/ui/Alert';
+
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -45,6 +47,9 @@ export default function Login() {
       await login(email, password);
       navigate('/dashboard');
     } catch (err) {
+      if (err.errors && Object.keys(err.errors).length > 0) {
+        setErrors(err.errors);
+      }
       setApiError(err.message || 'Login failed. Please verify your credentials.');
     } finally {
       setIsSubmitting(false);
@@ -70,9 +75,11 @@ export default function Login() {
 
         {/* API Error Box */}
         {apiError && (
-          <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900">
-            {apiError}
-          </div>
+          <Alert
+            variant="error"
+            message={apiError}
+            onClose={() => setApiError('')}
+          />
         )}
 
         {/* Form Container */}
