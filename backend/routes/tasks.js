@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const validate = require('../middlewares/validation.js');
 const authenticate = require('../middlewares/authentication.js');
-const { createTaskValidator, updateTaskValidator, updateTaskStatusValidator, taskIdParamsValidator } = require('../utils/taskValidator');
+const { createTaskValidator, updateTaskValidator, updateTaskStatusValidator, taskIdParamsValidator , reorderTasksValidator} = require('../utils/taskValidator');
 
 router.use(authenticate);
 
@@ -53,6 +53,27 @@ router.get('/:id', validate(taskIdParamsValidator, 'params'), async function _ge
 }
 );
 
+
+router.patch('/reorder', validate(reorderTasksValidator), async function _reorderTasks(req, res, next){
+    try {
+      const tasks = await require('../controllers/tasks/reorderTask.js')({
+        userId: req.user._id,
+        taskIds: req.body.taskIds,
+      });
+
+      res.status(200).json({
+        success: true,
+        status: 200,
+        message: 'Tasks reordered successfully',
+        data: { tasks },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+
 router.patch('/:id', validate(taskIdParamsValidator, 'params'), validate(updateTaskValidator),
   async function _updateTask(req, res, next) {
     try {
@@ -101,5 +122,7 @@ router.delete('/:id', validate(taskIdParamsValidator, 'params'),async function _
     }
   }
 );
+
+
 
 module.exports = router;
