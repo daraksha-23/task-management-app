@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react';
 
-import api, { getApiError, setAccessToken } from '../services/api';
+import api, { getApiError, setAccessToken, setLogoutCallback } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -170,27 +170,25 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
+    setLogoutCallback(() => {
+      clearTokens();
+      setUser(null);
+    });
+
+    return () => {
+      setLogoutCallback(null);
+    };
+  }, []);
+
+  useEffect(() => {
     let active = true;
 
     async function initializeAuthentication() {
       const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+      const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
 
       try {
-        if (accessToken) {
-          setAccessToken(accessToken);
-
-          try {
-            await getProfile();
-          } catch (error) {
-            if (error.response?.status !== 401) {
-              throw error;
-            }
-
-            await refreshSession();
-            await getProfile();
-          }
-        } else if (localStorage.getItem(REFRESH_TOKEN_KEY)) {
-          await refreshSession();
+        if (accessToken || refreshToken) {
           await getProfile();
         }
       } catch {
@@ -211,7 +209,7 @@ export function AuthProvider({ children }) {
     return () => {
       active = false;
     };
-  }, [getProfile, refreshSession]);
+  }, [getProfile]);
 
   const contextValue = useMemo(
     () => ({

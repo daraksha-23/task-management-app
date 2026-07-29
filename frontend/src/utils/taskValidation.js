@@ -21,9 +21,9 @@ export function validateTask(taskData) {
 
   // Priority validation
   const priority = taskData.priority;
-  const validPriorities = ['Low', 'Medium', 'High'];
+  const validPriorities = ['low', 'medium', 'high'];
   if (!priority || !validPriorities.includes(priority)) {
-    errors.priority = 'Priority must be Low, Medium, or High.';
+    errors.priority = 'Priority must be low, medium, or high.';
   }
 
   // Due Date validation (Bonus field, optional)
@@ -62,7 +62,7 @@ export function validateTaskSchema(task) {
   if (typeof task.completed !== 'boolean') return false;
   if (typeof task.createdAt !== 'string') return false;
   if (typeof task.updatedAt !== 'string') return false;
-  if (!['Low', 'Medium', 'High'].includes(task.priority)) return false;
+  if (!['low', 'medium', 'high'].includes(task.priority)) return false;
   if (typeof task.order !== 'number') return false;
   if (task.dueDate !== undefined && task.dueDate !== null && typeof task.dueDate !== 'string') return false;
   return true;

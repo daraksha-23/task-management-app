@@ -1,19 +1,26 @@
 import React, { useState } from 'react';
 import { validateTask } from '../../utils/taskValidation';
+import { getApiError } from '../../services/api';
 import Input from '../ui/Input';
 import TextArea from '../ui/TextArea';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
+import Alert from '../ui/Alert';
 
 export default function TaskForm({ initialData = {}, onSubmit, onCancel, submitButtonLabel = 'Save Task' }) {
   const [title, setTitle] = useState(initialData.title || '');
   const [description, setDescription] = useState(initialData.description || '');
-  const [priority, setPriority] = useState(initialData.priority || 'Medium');
+  const [priority, setPriority] = useState(initialData.priority || 'medium');
   const [dueDate, setDueDate] = useState(initialData.dueDate || '');
   const [errors, setErrors] = useState({});
+  const [serverError, setServerError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setServerError('');
+    setErrors({});
 
     const taskData = {
       title,
@@ -27,15 +34,29 @@ export default function TaskForm({ initialData = {}, onSubmit, onCancel, submitB
 
     if (!isValid) {
       setErrors(validationErrors);
+      setIsSubmitting(false);
       return;
     }
 
-    setErrors({});
-    onSubmit(taskData);
+    try {
+      await onSubmit(taskData);
+    } catch (err) {
+      const apiError = getApiError(err);
+      setServerError(apiError.message);
+      if (apiError.errors) {
+        setErrors(apiError.errors);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+      {serverError && (
+        <Alert variant="error" message={serverError} onClose={() => setServerError('')} />
+      )}
+
       {/* Title Input field */}
       <Input
         label="Title"
@@ -76,9 +97,9 @@ export default function TaskForm({ initialData = {}, onSubmit, onCancel, submitB
           onChange={(e) => setPriority(e.target.value)}
           error={errors.priority}
         >
-          <option value="Low">Low</option>
-          <option value="Medium">Medium</option>
-          <option value="High">High</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
         </Select>
 
         {/* Due Date Picker */}
@@ -100,17 +121,20 @@ export default function TaskForm({ initialData = {}, onSubmit, onCancel, submitB
         <Button
           variant="secondary"
           onClick={onCancel}
+          disabled={isSubmitting}
         >
           Cancel
         </Button>
         <Button
           type="submit"
           variant="primary"
+          disabled={isSubmitting}
         >
-          {submitButtonLabel}
+          {isSubmitting ? 'Saving...' : submitButtonLabel}
         </Button>
       </div>
     </form>
   );
 }
+
 

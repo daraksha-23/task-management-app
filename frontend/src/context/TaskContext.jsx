@@ -1,177 +1,320 @@
-import React, { createContext, useState, useEffect } from 'react';
-import { loadTasksFromStorage, saveTasksToStorage, clearTasksStorage } from '../utils/storage';
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 
-export const TaskContext = createContext();
+import { useAuth } from './AuthContext';
+import { getApiError } from '../services/api';
+import { getTasks as fetchTasks, createTask as createTaskRequest, updateTask as updateTaskRequest, updateTaskStatus as updateTaskStatusRequest, deleteTask as deleteTaskRequest, reorderTasks as reorderTasksRequest,} from '../services/taskService';
+
+import { loadTasksFromStorage, saveTasksToStorage, clearTasksStorage,} from '../utils/storage';
+
+export const TaskContext = createContext(null);
+
+function normalizeTask(task) {
+  return {
+    id: task._id || task.id,
+    title: task.title,
+    description: task.description || '',
+    priority: task.priority || 'medium',
+    completed: task.status === 'completed',
+    dueDate: task.dueDate
+      ? task.dueDate.slice(0, 10)
+      : null,
+    order: task.order,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+  };
+}
+
+function normalizeTasks(tasks) {
+  return tasks
+    .map(normalizeTask)
+    .sort((first, second) => first.order - second.order);
+}
 
 export function TaskProvider({ children }) {
-  // Synchronous lazy initializer avoids writing empty state to localStorage
-  const [state, setState] = useState(() => {
-    const { tasks, error } = loadTasksFromStorage();
-    return {
-      tasks,
-      loading: false,
-      storageError: error,
-    };
-  });
+  const { user } = useAuth();
 
-  const [feedback, setFeedback] = useState(null); // { type: 'success' | 'warning', text: string }
-  const [writeWarning, setWriteWarning] = useState(false); // Triggers warning alert if storage writing fails
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const [error, setError] = useState('');
 
-  // Auto-dismiss user feedback notifications after 3 seconds
-  useEffect(() => {
-    if (feedback) {
-      const timer = setTimeout(() => {
-        setFeedback(null);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [feedback]);
-
-  // Helper to show user feedback message
-  const showFeedback = (type, text) => {
+  const showFeedback = useCallback((type, text) => {
     setFeedback({ type, text });
-  };
+  }, []);
 
-  // Safe wrapper for persisting updates to storage
-  const saveTasks = (newTasks) => {
-    if (state.storageError === 'CORRUPTED') {
-      // Abort writes to prevent silently overwriting user's corrupted state before reset
+  const saveCache = useCallback(
+    (updatedTasks) => {
+      if (user?.id) {
+        saveTasksToStorage(user.id, updatedTasks);
+      }
+    },
+    [user]
+  );
+
+  const loadTasks = useCallback(async () => {
+    if (!user?.id) {
+      setTasks([]);
+      setLoading(false);
       return;
     }
+
+    const cachedTasks = loadTasksFromStorage(user.id);
+
+    if (cachedTasks.length > 0) {
+      setTasks(cachedTasks);
+    }
+
+    setLoading(true);
+    setError('');
+
     try {
-      saveTasksToStorage(newTasks);
-      setWriteWarning(false);
-    } catch (err) {
-      console.error('Failed to write tasks to storage:', err);
-      setWriteWarning(true);
-      showFeedback('warning', 'Changes saved to session only. Persistent storage full or restricted.');
+      const databaseTasks = await fetchTasks();
+      const normalizedTasks = normalizeTasks(databaseTasks);
+
+      setTasks(normalizedTasks);
+      saveTasksToStorage(user.id, normalizedTasks);
+    } catch (requestError) {
+      const apiError = getApiError(requestError);
+
+      setError(apiError.message);
+
+      if (cachedTasks.length > 0) {
+        showFeedback(
+          'warning',
+          'Showing cached tasks because the server is unavailable.'
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [user, showFeedback]);
+
+  useEffect(() => {
+    loadTasks();
+  }, [loadTasks]);
+
+  useEffect(() => {
+    if (!feedback) {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setFeedback(null);
+    }, 3000);
+
+    return () => window.clearTimeout(timeout);
+  }, [feedback]);
+
+  const addTask = async (
+    title,
+    description,
+    priority,
+    dueDate = null
+  ) => {
+    setError('');
+
+    try {
+      const createdTask = await createTaskRequest({
+        title: title.trim(),
+        description: description.trim(),
+        priority,
+        dueDate: dueDate || null,
+      });
+
+      const normalizedTask = normalizeTask(createdTask);
+
+      setTasks((currentTasks) => {
+        const updatedTasks = [...currentTasks, normalizedTask];
+        saveCache(updatedTasks);
+        return updatedTasks;
+      });
+
+      showFeedback(
+        'success',
+        `Task "${normalizedTask.title}" created successfully.`
+      );
+
+      return normalizedTask;
+    } catch (requestError) {
+      const apiError = getApiError(requestError);
+      setError(apiError.message);
+      throw requestError;
     }
   };
 
-  // Action: Add new task
-  const addTask = (title, description, priority, dueDate = null) => {
-    const id = crypto.randomUUID
-      ? crypto.randomUUID()
-      : Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+  const updateTask = async (taskId, updatedFields) => {
+    setError('');
 
-    const newTask = {
-      id,
-      title: title.trim(),
-      description: description.trim(),
-      completed: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      priority,
-      dueDate: dueDate || null,
-      order: state.tasks.length, // Appended to end of list
-    };
+    try {
+      const updatedTask = await updateTaskRequest(
+        taskId,
+        updatedFields
+      );
 
-    const updatedTasks = [...state.tasks, newTask];
-    setState((prev) => ({ ...prev, tasks: updatedTasks }));
-    saveTasks(updatedTasks);
-    showFeedback('success', `Task "${newTask.title}" created successfully.`);
+      const normalizedTask = normalizeTask(updatedTask);
+
+      setTasks((currentTasks) => {
+        const nextTasks = currentTasks.map((task) =>
+          task.id === taskId ? normalizedTask : task
+        );
+
+        saveCache(nextTasks);
+        return nextTasks;
+      });
+
+      showFeedback('success', 'Task updated successfully.');
+
+      return normalizedTask;
+    } catch (requestError) {
+      const apiError = getApiError(requestError);
+      setError(apiError.message);
+      throw requestError;
+    }
   };
 
-  // Action: Update existing task details
-  const updateTask = (id, updatedFields) => {
-    const updatedTasks = state.tasks.map((task) => {
-      if (task.id === id) {
-        return {
-          ...task,
-          ...updatedFields,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      return task;
-    });
+  const deleteTask = async (taskId) => {
+    setError('');
 
-    setState((prev) => ({ ...prev, tasks: updatedTasks }));
-    saveTasks(updatedTasks);
-    showFeedback('success', 'Task updated successfully.');
+    try {
+      const taskToDelete = tasks.find(
+        (task) => task.id === taskId
+      );
+
+      await deleteTaskRequest(taskId);
+
+      setTasks((currentTasks) => {
+        const updatedTasks = currentTasks
+          .filter((task) => task.id !== taskId)
+          .map((task, order) => ({
+            ...task,
+            order,
+          }));
+
+        saveCache(updatedTasks);
+        return updatedTasks;
+      });
+
+      showFeedback(
+        'success',
+        taskToDelete
+          ? `Task "${taskToDelete.title}" deleted successfully.`
+          : 'Task deleted successfully.'
+      );
+    } catch (requestError) {
+      const apiError = getApiError(requestError);
+      setError(apiError.message);
+      throw requestError;
+    }
   };
 
-  // Action: Delete task and re-sequence order coordinates
-  const deleteTask = (id) => {
-    const targetTask = state.tasks.find((t) => t.id === id);
-    const titleText = targetTask ? `"${targetTask.title}"` : 'Task';
+  const toggleTaskStatus = async (taskId) => {
+    setError('');
 
-    const filteredTasks = state.tasks.filter((task) => task.id !== id);
-    // Re-sequence remaining tasks order from 0 to N-1
-    const resequencedTasks = filteredTasks.map((task, index) => ({
+    const currentTask = tasks.find( (task) => task.id === taskId );
+    if (!currentTask) {return;}
+
+    const nextStatus = currentTask.completed ? 'pending' : 'completed';
+
+    try { const updatedTask = await updateTaskStatusRequest(taskId,nextStatus);
+
+      const normalizedTask = normalizeTask(updatedTask);
+
+      setTasks((currentTasks) => {
+        const updatedTasks = currentTasks.map((task) =>
+          task.id === taskId ? normalizedTask : task
+        );
+
+        saveCache(updatedTasks);
+        return updatedTasks;
+      });
+
+      showFeedback('success', 'Task status updated.');
+    } catch (requestError) {
+      const apiError = getApiError(requestError);
+      setError(apiError.message);
+    }
+  };
+
+  const reorderTasks = async (startIndex, endIndex) => {
+    if (
+      startIndex === endIndex ||
+      endIndex < 0 ||
+      endIndex >= tasks.length
+    ) {
+      return;
+    }
+
+    const previousTasks = tasks;
+
+    const reorderedTasks = [...tasks];
+    const [movedTask] = reorderedTasks.splice(startIndex, 1);
+    reorderedTasks.splice(endIndex, 0, movedTask);
+
+    const orderedTasks = reorderedTasks.map((task, order) => ({
       ...task,
-      order: index,
+      order,
     }));
 
-    setState((prev) => ({ ...prev, tasks: resequencedTasks }));
-    saveTasks(resequencedTasks);
-    showFeedback('success', `${titleText} deleted successfully.`);
+    setTasks(orderedTasks);
+    saveCache(orderedTasks);
+
+    try {
+      const databaseTasks = await reorderTasksRequest(
+        orderedTasks.map((task) => task.id)
+      );
+
+      const normalizedTasks = normalizeTasks(databaseTasks);
+
+      setTasks(normalizedTasks);
+      saveCache(normalizedTasks);
+      showFeedback('success', 'Task order updated.');
+    } catch (requestError) {
+      setTasks(previousTasks);
+      saveCache(previousTasks);
+
+      const apiError = getApiError(requestError);
+      setError(apiError.message);
+      showFeedback('warning', 'Task order could not be updated.');
+    }
   };
 
-  // Action: Toggle Completed / Pending status
-  const toggleTaskStatus = (id) => {
-    const updatedTasks = state.tasks.map((task) => {
-      if (task.id === id) {
-        const nextCompleted = !task.completed;
-        return {
-          ...task,
-          completed: nextCompleted,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      return task;
-    });
-
-    setState((prev) => ({ ...prev, tasks: updatedTasks }));
-    saveTasks(updatedTasks);
-    showFeedback('success', 'Task status updated.');
-  };
-
-  // Action: Reorder tasks (active in Bonus phase)
-  const reorderTasks = (startIndex, endIndex) => {
-    const result = Array.from(state.tasks);
-    const [removed] = result.splice(startIndex, 1);
-    result.splice(endIndex, 0, removed);
-
-    // Reset order properties to reflect new index placement
-    const resequencedTasks = result.map((task, index) => ({
-      ...task,
-      order: index,
-    }));
-
-    setState((prev) => ({ ...prev, tasks: resequencedTasks }));
-    saveTasks(resequencedTasks);
-    showFeedback('success', 'Task order updated.');
-  };
-
-  // Action: Recover and clear storage on corruption
   const resetStorage = () => {
-    clearTasksStorage();
-    setState({
-      tasks: [],
-      loading: false,
-      storageError: null,
-    });
-    setWriteWarning(false);
-    showFeedback('success', 'Storage cleared. App reset to empty list.');
+    if (!user?.id) {
+      return;
+    }
+
+    clearTasksStorage(user.id);
+    loadTasks();
   };
+
+  const contextValue = useMemo(
+    () => ({
+      tasks,
+      loading,
+      error,
+      feedback,
+      storageError: null,
+      writeWarning: Boolean(error),
+      addTask,
+      updateTask,
+      deleteTask,
+      toggleTaskStatus,
+      reorderTasks,
+      resetStorage,
+      clearFeedback: () => setFeedback(null),
+      reloadTasks: loadTasks,
+    }),
+    [tasks, loading, error, feedback, loadTasks]
+  );
 
   return (
-    <TaskContext.Provider
-      value={{
-        tasks: state.tasks,
-        loading: state.loading,
-        storageError: state.storageError,
-        feedback,
-        writeWarning,
-        addTask,
-        updateTask,
-        deleteTask,
-        toggleTaskStatus,
-        reorderTasks,
-        resetStorage,
-        clearFeedback: () => setFeedback(null),
-      }}
-    >
+    <TaskContext.Provider value={contextValue}>
       {children}
     </TaskContext.Provider>
   );

@@ -7,29 +7,49 @@ import { ArrowLeft, FileText, AlertCircle } from 'lucide-react';
 export default function TaskFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { tasks, addTask, updateTask } = useContext(TaskContext);
+  const { tasks, loading, addTask, updateTask } = useContext(TaskContext);
 
   const isEditMode = !!id;
   const currentTask = isEditMode ? tasks.find((t) => t.id === id) : null;
 
   // Handle task saving
-  const handleSave = (formData) => {
+ const handleSave = async (formData) => {
+  try {
     if (isEditMode) {
-      updateTask(id, {
+      await updateTask(id, {
         title: formData.title,
         description: formData.description,
         priority: formData.priority,
-        dueDate: formData.dueDate,
+        dueDate: formData.dueDate || null,
       });
     } else {
-      addTask(formData.title, formData.description, formData.priority, formData.dueDate);
+      await addTask(
+        formData.title,
+        formData.description,
+        formData.priority,
+        formData.dueDate || null
+      );
     }
+
     navigate('/dashboard');
-  };
+  } catch (err) {
+    // Re-throw so TaskForm's local catch can handle it and set form error states
+    throw err;
+  }
+};
 
   const handleCancel = () => {
     navigate('/dashboard');
   };
+
+  // If tasks are still loading, show a loading spinner
+  if (loading) {
+    return (
+      <div className="flex min-h-[300px] items-center justify-center">
+        <div className="h-10 w-15 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
+      </div>
+    );
+  }
 
   // If edit mode is requested but the task ID is invalid or task is not found
   if (isEditMode && !currentTask) {
@@ -54,7 +74,7 @@ export default function TaskFormPage() {
           </Link>
         </div>
       </div>
-    );
+    ); 
   }
 
   return (

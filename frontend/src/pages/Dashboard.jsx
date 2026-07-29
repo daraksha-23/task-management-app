@@ -145,10 +145,15 @@ export default function Dashboard() {
       <ConfirmDeleteModal
         isOpen={!!deletingTask}
         taskTitle={deletingTask?.title || ''}
-        onConfirm={() => {
-          if (deletingTask) {
-            deleteTask(deletingTask.id);
+        onConfirm={async () => {
+          if (!deletingTask) {
+            return;
+          }
+          try {
+            await deleteTask(deletingTask.id);
             setDeletingTask(null);
+          } catch {
+            // Keeping  the modal open when deletion fails.
           }
         }}
         onCancel={() => setDeletingTask(null)}

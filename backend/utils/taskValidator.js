@@ -55,7 +55,7 @@ const updateTaskValidator = z.object({
         .optional(),
 
     priority: z
-        .enum(Object.values(TASK_PRIORITY), {
+        .enum(Object.values(TASK_PRIORITY).map(value => value.toLowerCase()), {
             message: 'Priority must be low, medium or high',
         })
         .optional(),

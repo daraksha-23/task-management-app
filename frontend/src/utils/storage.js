@@ -1,63 +1,38 @@
-import { validateTaskSchema } from './taskValidation';
+const TASK_STORAGE_PREFIX = 'task_manager_tasks';
 
-const STORAGE_KEY = 'task_manager_tasks';
+function getStorageKey(userId) {
+  if (!userId) {
+    throw new Error('A user ID is required for task storage');
+  }
 
-/**
- * Reads tasks from localStorage and runs schema validation on each task.
- * Returns { tasks: Array, error: string | null }
- */
-export function loadTasksFromStorage() {
+  return `${TASK_STORAGE_PREFIX}:${userId}`;
+}
+
+export function loadTasksFromStorage(userId) {
   try {
-    const rawData = localStorage.getItem(STORAGE_KEY);
-    if (rawData === null) {
-      // Storage is clean, start with empty list
-      return { tasks: [], error: null };
+    const storedTasks = localStorage.getItem(getStorageKey(userId));
+
+    if (!storedTasks) {
+      return [];
     }
 
-    const parsedData = JSON.parse(rawData);
-    if (!Array.isArray(parsedData)) {
-      return { tasks: [], error: 'CORRUPTED' };
-    }
+    const tasks = JSON.parse(storedTasks);
 
-    // Validate schema of every individual task
-    for (const task of parsedData) {
-      if (!validateTaskSchema(task)) {
-        return { tasks: [], error: 'CORRUPTED' };
-      }
-    }
-
-    // Return successfully validated and order-sorted task list
-    const sortedTasks = [...parsedData].sort((a, b) => a.order - b.order);
-    return { tasks: sortedTasks, error: null };
-  } catch (err) {
-    console.error('Failed to load from localStorage:', err);
-    return { tasks: [], error: 'CORRUPTED' };
+    return Array.isArray(tasks)
+      ? tasks.sort((first, second) => first.order - second.order)
+      : [];
+  } catch {
+    return [];
   }
 }
 
-/**
- * Saves tasks to localStorage.
- * Throws an error on failure (e.g. QuotaExceededError).
- */
-export function saveTasksToStorage(tasks) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-    return true;
-  } catch (err) {
-    console.error('Failed to write to localStorage:', err);
-    throw err;
-  }
+export function saveTasksToStorage(userId, tasks) {
+  localStorage.setItem(
+    getStorageKey(userId),
+    JSON.stringify(tasks)
+  );
 }
 
-/**
- * Explicitly clears tasks in localStorage to recover from corruption.
- */
-export function clearTasksStorage() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-    return true;
-  } catch (err) {
-    console.error('Failed to clear localStorage:', err);
-    return false;
-  }
+export function clearTasksStorage(userId) {
+  localStorage.removeItem(getStorageKey(userId));
 }
