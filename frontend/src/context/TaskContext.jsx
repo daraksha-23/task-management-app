@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -40,9 +41,21 @@ export function TaskProvider({ children }) {
   const { user } = useAuth();
 
   const [tasks, setTasks] = useState([]);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 9,
+    totalTasks: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [error, setError] = useState('');
+
+  const latestRequestIdRef = useRef(0);
+  const activeParamsRef = useRef({});
+  const hasLoadedInitialCacheRef = useRef(false);
 
   const showFeedback = useCallback((type, text) => {
     setFeedback({ type, text });
@@ -57,16 +70,20 @@ export function TaskProvider({ children }) {
     [user]
   );
 
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async (params = {}) => {
     if (!user?.id) {
       setTasks([]);
       setLoading(false);
       return;
     }
 
+    const requestId = ++latestRequestIdRef.current;
+    activeParamsRef.current = params;
+
     const cachedTasks = loadTasksFromStorage(user.id);
 
-    if (cachedTasks.length > 0) {
+    if (!hasLoadedInitialCacheRef.current && cachedTasks.length > 0) {
+      hasLoadedInitialCacheRef.current = true;
       setTasks(cachedTasks);
     }
 
@@ -74,14 +91,28 @@ export function TaskProvider({ children }) {
     setError('');
 
     try {
-      const databaseTasks = await fetchTasks();
-      const normalizedTasks = normalizeTasks(databaseTasks);
+      const responseData = await fetchTasks(params);
+
+      if (requestId !== latestRequestIdRef.current) {
+        return;
+      }
+
+      const databaseTasks = responseData?.tasks || [];
+      const meta = responseData?.pagination || {};
+
+      const normalizedTasks = databaseTasks.map(normalizeTask);
 
       setTasks(normalizedTasks);
+      if (meta && Object.keys(meta).length > 0) {
+        setPagination(meta);
+      }
       saveTasksToStorage(user.id, normalizedTasks);
     } catch (requestError) {
-      const apiError = getApiError(requestError);
+      if (requestId !== latestRequestIdRef.current) {
+        return;
+      }
 
+      const apiError = getApiError(requestError);
       setError(apiError.message);
 
       if (cachedTasks.length > 0) {
@@ -91,13 +122,17 @@ export function TaskProvider({ children }) {
         );
       }
     } finally {
-      setLoading(false);
+      if (requestId === latestRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [user, showFeedback]);
 
   useEffect(() => {
-    loadTasks();
-  }, [loadTasks]);
+    if (user?.id) {
+      hasLoadedInitialCacheRef.current = false;
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     if (!feedback) {
@@ -129,17 +164,12 @@ export function TaskProvider({ children }) {
 
       const normalizedTask = normalizeTask(createdTask);
 
-      setTasks((currentTasks) => {
-        const updatedTasks = [...currentTasks, normalizedTask];
-        saveCache(updatedTasks);
-        return updatedTasks;
-      });
-
       showFeedback(
         'success',
         `Task "${normalizedTask.title}" created successfully.`
       );
 
+      await loadTasks(activeParamsRef.current);
       return normalizedTask;
     } catch (requestError) {
       const apiError = getApiError(requestError);
@@ -159,17 +189,9 @@ export function TaskProvider({ children }) {
 
       const normalizedTask = normalizeTask(updatedTask);
 
-      setTasks((currentTasks) => {
-        const nextTasks = currentTasks.map((task) =>
-          task.id === taskId ? normalizedTask : task
-        );
-
-        saveCache(nextTasks);
-        return nextTasks;
-      });
-
       showFeedback('success', 'Task updated successfully.');
 
+      await loadTasks(activeParamsRef.current);
       return normalizedTask;
     } catch (requestError) {
       const apiError = getApiError(requestError);
@@ -188,24 +210,14 @@ export function TaskProvider({ children }) {
 
       await deleteTaskRequest(taskId);
 
-      setTasks((currentTasks) => {
-        const updatedTasks = currentTasks
-          .filter((task) => task.id !== taskId)
-          .map((task, order) => ({
-            ...task,
-            order,
-          }));
-
-        saveCache(updatedTasks);
-        return updatedTasks;
-      });
-
       showFeedback(
         'success',
         taskToDelete
           ? `Task "${taskToDelete.title}" deleted successfully.`
           : 'Task deleted successfully.'
       );
+
+      await loadTasks(activeParamsRef.current);
     } catch (requestError) {
       const apiError = getApiError(requestError);
       setError(apiError.message);
@@ -221,20 +233,11 @@ export function TaskProvider({ children }) {
 
     const nextStatus = currentTask.completed ? 'pending' : 'completed';
 
-    try { const updatedTask = await updateTaskStatusRequest(taskId,nextStatus);
-
-      const normalizedTask = normalizeTask(updatedTask);
-
-      setTasks((currentTasks) => {
-        const updatedTasks = currentTasks.map((task) =>
-          task.id === taskId ? normalizedTask : task
-        );
-
-        saveCache(updatedTasks);
-        return updatedTasks;
-      });
+    try {
+      await updateTaskStatusRequest(taskId, nextStatus);
 
       showFeedback('success', 'Task status updated.');
+      await loadTasks(activeParamsRef.current);
     } catch (requestError) {
       const apiError = getApiError(requestError);
       setError(apiError.message);
@@ -296,6 +299,7 @@ export function TaskProvider({ children }) {
   const contextValue = useMemo(
     () => ({
       tasks,
+      pagination,
       loading,
       error,
       feedback,
@@ -309,8 +313,9 @@ export function TaskProvider({ children }) {
       resetStorage,
       clearFeedback: () => setFeedback(null),
       reloadTasks: loadTasks,
+      loadTasks,
     }),
-    [tasks, loading, error, feedback, loadTasks]
+    [tasks, pagination, loading, error, feedback, loadTasks]
   );
 
   return (

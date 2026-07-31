@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TaskContext } from '../context/TaskContext';
 import SearchBar from '../components/ui/SearchBar';
@@ -7,11 +7,12 @@ import TaskList from '../components/tasks/TaskList';
 import EmptyState from '../components/tasks/EmptyState';
 import ConfirmDeleteModal from '../components/tasks/ConfirmDeleteModal';
 import ErrorMessage from '../components/ui/ErrorMessage';
-import { Plus, Info } from 'lucide-react';
+import { Plus, Info, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function Dashboard() {
   const {
     tasks,
+    pagination,
     loading,
     storageError,
     feedback,
@@ -20,42 +21,89 @@ export default function Dashboard() {
     deleteTask,
     reorderTasks,
     resetStorage,
+    loadTasks,
   } = useContext(TaskContext);
 
   const [searchText, setSearchText] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [priorityFilter, setPriorityFilter] = useState('All');
+  const [page, setPage] = useState(1);
   const [deletingTask, setDeletingTask] = useState(null);
 
-  // Compute status counts for the filter pills
+  // Debounce search input by 400ms and reset page to 1 on search change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch((prev) => {
+        if (prev !== searchText) {
+          setPage(1);
+        }
+        return searchText;
+      });
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  const handleStatusFilterChange = (filter) => {
+    setStatusFilter(filter);
+    setPage(1);
+  };
+
+  const handlePriorityFilterChange = (filter) => {
+    setPriorityFilter(filter);
+    setPage(1);
+  };
+
+  // Fetch paginated and filtered tasks from backend
+  useEffect(() => {
+    const params = {
+      page,
+      limit: 9,
+    };
+
+    if (debouncedSearch.trim()) {
+      params.search = debouncedSearch.trim();
+    }
+
+    if (statusFilter === 'Pending') {
+      params.status = 'pending';
+    } else if (statusFilter === 'Completed') {
+      params.status = 'completed';
+    }
+
+    if (priorityFilter && priorityFilter !== 'All') {
+      params.priority = priorityFilter.toLowerCase();
+    }
+
+    loadTasks(params);
+  }, [debouncedSearch, statusFilter, priorityFilter, page, loadTasks]);
+
+  // Adjust page boundary if current page > totalPages after deletions
+  useEffect(() => {
+    if (pagination.totalPages > 0 && page > pagination.totalPages) {
+      setPage(pagination.totalPages);
+    }
+  }, [pagination.totalPages, page]);
+
   const counts = {
-    all: tasks.length,
+    all: pagination.totalTasks || tasks.length,
     pending: tasks.filter((t) => !t.completed).length,
     completed: tasks.filter((t) => t.completed).length,
   };
 
-  // Filter tasks based on search terms and selected filter
-  const filteredTasks = tasks.filter((task) => {
-    // 1. Filter by status
-    if (statusFilter === 'Pending' && task.completed) return false;
-    if (statusFilter === 'Completed' && !task.completed) return false;
-
-    // 2. Filter by search text (case-insensitive title and description)
-    if (searchText.trim()) {
-      const query = searchText.toLowerCase();
-      const matchTitle = task.title.toLowerCase().includes(query);
-      const matchDesc = (task.description || '').toLowerCase().includes(query);
-      return matchTitle || matchDesc;
-    }
-
-    return true;
-  });
-
   const handleClearFilters = () => {
     setSearchText('');
     setStatusFilter('All');
+    setPriorityFilter('All');
   };
 
-  // Render Corruption screen immediately if storage is broken
+  const isReorderEnabled =
+    !searchText.trim() &&
+    statusFilter === 'All' &&
+    priorityFilter === 'All' &&
+    pagination.totalPages <= 1;
+
   if (storageError === 'CORRUPTED') {
     return (
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -103,24 +151,22 @@ export default function Dashboard() {
       </div>
 
       {/* Filter and Search controls */}
-      {tasks.length > 0 && (
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="w-full md:max-w-md">
-            <SearchBar
-              value={searchText}
-              onChange={setSearchText}
-              onClear={() => setSearchText('')}
-            />
-          </div>
-          <div className="flex-shrink-0">
-            <StatusFilters
-              activeFilter={statusFilter}
-              onFilterChange={setStatusFilter}
-              counts={counts}
-            />
-          </div>
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="w-full md:max-w-md">
+          <SearchBar
+            value={searchText}
+            onChange={setSearchText}
+            onClear={() => setSearchText('')}
+          />
         </div>
-      )}
+        <div className="flex-shrink-0">
+          <StatusFilters
+            activeFilter={statusFilter}
+            onFilterChange={handleStatusFilterChange}
+            counts={counts}
+          />
+        </div>
+      </div>
 
       {/* Content Area */}
       {loading ? (
@@ -128,17 +174,50 @@ export default function Dashboard() {
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
         </div>
       ) : tasks.length === 0 ? (
-        <EmptyState type="empty" />
-      ) : filteredTasks.length === 0 ? (
-        <EmptyState type="no-results" onClearFilters={handleClearFilters} />
+        debouncedSearch.trim() || statusFilter !== 'All' ? (
+          <EmptyState type="no-results" onClearFilters={handleClearFilters} />
+        ) : (
+          <EmptyState type="empty" />
+        )
       ) : (
-        <TaskList
-          tasks={filteredTasks}
-          isReorderEnabled={statusFilter === 'All' && !searchText.trim()}
-          onToggleStatus={toggleTaskStatus}
-          onDeleteClick={(task) => setDeletingTask(task)}
-          onReorderTasks={reorderTasks}
-        />
+        <>
+          <TaskList
+            tasks={tasks}
+            isReorderEnabled={isReorderEnabled}
+            onToggleStatus={toggleTaskStatus}
+            onDeleteClick={(task) => setDeletingTask(task)}
+            onReorderTasks={reorderTasks}
+          />
+
+          {/* Pagination Controls */}
+          {pagination.totalPages > 1 && (
+            <div className="mt-8 flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-4">
+              <button
+                type="button"
+                disabled={!pagination.hasPreviousPage || loading}
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                className="inline-flex items-center space-x-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition min-h-[44px]"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span>Previous</span>
+              </button>
+
+              <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                Page {pagination.page} of {pagination.totalPages}
+              </span>
+
+              <button
+                type="button"
+                disabled={!pagination.hasNextPage || loading}
+                onClick={() => setPage((prev) => Math.min(pagination.totalPages, prev + 1))}
+                className="inline-flex items-center space-x-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition min-h-[44px]"
+              >
+                <span>Next</span>
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Delete Confirmation Dialog */}
@@ -153,7 +232,7 @@ export default function Dashboard() {
             await deleteTask(deletingTask.id);
             setDeletingTask(null);
           } catch {
-            // Keeping  the modal open when deletion fails.
+            // Keep modal open on deletion failure
           }
         }}
         onCancel={() => setDeletingTask(null)}

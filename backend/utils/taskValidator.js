@@ -89,10 +89,24 @@ const reorderTasksValidator = z.object({
     );
 
 
+const getTasksQueryValidator = z.object({
+    search: z.string().trim().optional().default(''),
+    status: z.enum(Object.values(TASK_STATUS), {
+        message: 'Status must be pending or completed',
+    }).optional(),
+    priority: z.enum(Object.values(TASK_PRIORITY), {
+        message: 'Priority must be low, medium or high',
+    }).optional(),
+    page: z.coerce.number().int().min(1, 'Page must be at least 1').optional().default(1),
+    limit: z.coerce.number().int().min(1, 'Limit must be at least 1').max(50, 'Limit cannot exceed 50').optional().default(9),
+}).strict();
+
+
 module.exports = {
     createTaskValidator,
     updateTaskValidator,
     updateTaskStatusValidator,
     reorderTasksValidator,
-    taskIdParamsValidator
+    taskIdParamsValidator,
+    getTasksQueryValidator
 };

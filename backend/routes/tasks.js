@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const validate = require('../middlewares/validation.js');
 const authenticate = require('../middlewares/authentication.js');
-const { createTaskValidator, updateTaskValidator, updateTaskStatusValidator, taskIdParamsValidator , reorderTasksValidator} = require('../utils/taskValidator');
+const { createTaskValidator, updateTaskValidator, updateTaskStatusValidator, taskIdParamsValidator , reorderTasksValidator, getTasksQueryValidator} = require('../utils/taskValidator');
 
 router.use(authenticate);
 
@@ -24,14 +24,14 @@ router.post('/', validate(createTaskValidator), async function _createTask(req, 
 }
 );
 
-router.get('/', async function _getTasks(req, res, next) {
+router.get('/', validate(getTasksQueryValidator, 'query'), async function _getTasks(req, res, next) {
   try {
-    const tasks = await require('../controllers/tasks/getTasks.js')({ userId: req.user._id, query: req.query, });
+    const { tasks, pagination } = await require('../controllers/tasks/getTasks.js')({ userId: req.user._id, query: req.query, });
     res.status(200).json({
       success: true,
       status: 200,
       message: 'Tasks retrieved successfully',
-      data: { tasks },
+      data: { tasks, pagination },
     });
   } catch (error) {
     next(error);
