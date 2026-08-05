@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '../context/AuthContext';
-import { validateEmail } from '../utils/taskValidation';
+import { loginSchema } from '../schemas/auth';
 import { CheckSquare } from 'lucide-react';
 
 import Alert from '../components/ui/Alert';
@@ -10,51 +12,35 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState({});
-  const [apiError, setApiError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    setError,
+    clearErrors,
+    formState: { errors, isSubmitting },
+  } = useForm({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+  });
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const newErrors = {};
-
-    // Validate email formatting
-    if (!email) {
-      newErrors.email = 'Email address is required.';
-    } else if (!validateEmail(email)) {
-      newErrors.email = 'Please provide a valid email format.';
-    }
-
-    // Validate password formatting
-    if (!password) {
-      newErrors.password = 'Password is required.';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters.';
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setErrors({});
-    setApiError('');
-    setIsSubmitting(true);
-
+  const onSubmit = async (data) => {
     try {
-      await login(email, password);
+      await login(data.email, data.password);
       navigate('/dashboard');
     } catch (err) {
       if (err.errors && Object.keys(err.errors).length > 0) {
-        setErrors(err.errors);
+        Object.keys(err.errors).forEach((key) => {
+          setError(key, { type: 'server', message: err.errors[key] });
+        });
       }
-      setApiError(err.message || 'Login failed. Please verify your credentials.');
-    } finally {
-      setIsSubmitting(false);
+      setError('root.server', { message: err.message || 'Login failed. Please verify your credentials.' });
     }
   };
+
+  const apiError = errors.root?.server?.message;
 
   return (
     <div className="flex min-h-[80vh] flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
@@ -78,12 +64,12 @@ export default function Login() {
           <Alert
             variant="error"
             message={apiError}
-            onClose={() => setApiError('')}
+            onClose={() => clearErrors('root.server')}
           />
         )}
 
         {/* Form Container */}
-        <form className="mt-6 space-y-5" onSubmit={handleSubmit} noValidate>
+        <form className="mt-6 space-y-5" onSubmit={handleSubmit(onSubmit)} noValidate>
           {/* Email input field */}
           <div className="space-y-1.5">
             <label
@@ -94,21 +80,19 @@ export default function Login() {
             </label>
             <input
               id="email"
-              name="email"
               type="email"
               autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${errors.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : ''
                 }`}
               placeholder="you@example.com"
               disabled={isSubmitting}
               aria-invalid={!!errors.email}
               aria-describedby={errors.email ? "email-error" : undefined}
+              {...register('email')}
             />
             {errors.email && (
               <p id="email-error" className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                {errors.email}
+                {errors.email.message}
               </p>
             )}
           </div>
@@ -131,21 +115,19 @@ export default function Login() {
             </div>
             <input
               id="password"
-              name="password"
               type="password"
               autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
               className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${errors.password ? 'border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : ''
                 }`}
               placeholder="••••••••"
               disabled={isSubmitting}
               aria-invalid={!!errors.password}
               aria-describedby={errors.password ? "password-error" : undefined}
+              {...register('password')}
             />
             {errors.password && (
               <p id="password-error" className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                {errors.password}
+                {errors.password.message}
               </p>
             )}
           </div>
@@ -170,3 +152,4 @@ export default function Login() {
     </div>
   );
 }
+

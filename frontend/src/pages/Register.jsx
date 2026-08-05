@@ -1,71 +1,48 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '../context/AuthContext';
-import { validateEmail } from '../utils/taskValidation';
+import { registerSchema } from '../schemas/auth';
 import { CheckSquare } from 'lucide-react';
 
 import Alert from '../components/ui/Alert';
 
 export default function Register() {
-  const { register } = useAuth();
+  const { register: registerUser } = useAuth();
   const navigate = useNavigate();
 
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  
-  const [errors, setErrors] = useState({});
-  const [apiError, setApiError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    setError,
+    clearErrors,
+    formState: { errors, isSubmitting },
+  } = useForm({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      username: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+    },
+  });
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const newErrors = {};
-
-    if (!username.trim()) {
-      newErrors.username = 'Username is required.';
-    } else if (username.trim().length < 3) {
-      newErrors.username = 'Username must be at least 3 characters.';
-    }
-
-    if (!email) {
-      newErrors.email = 'Email address is required.';
-    } else if (!validateEmail(email)) {
-      newErrors.email = 'Please provide a valid email format.';
-    }
-
-    if (!password) {
-      newErrors.password = 'Password is required.';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters.';
-    }
-
-    if (password !== confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match.';
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setErrors({});
-    setApiError('');
-    setIsSubmitting(true);
-
+  const onSubmit = async (data) => {
     try {
-      await register(username.trim(), email, password);
+      await registerUser(data.username, data.email, data.password);
       navigate('/dashboard');
     } catch (err) {
       if (err.errors && Object.keys(err.errors).length > 0) {
-        setErrors(err.errors);
+        Object.keys(err.errors).forEach((key) => {
+          setError(key, { type: 'server', message: err.errors[key] });
+        });
       }
-      setApiError(err.message || 'Registration failed. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+      setError('root.server', { message: err.message || 'Registration failed. Please try again.' });
     }
   };
+
+  const apiError = errors.root?.server?.message;
 
   return (
     <div className="flex min-h-[80vh] flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
@@ -89,12 +66,12 @@ export default function Register() {
           <Alert
             variant="error"
             message={apiError}
-            onClose={() => setApiError('')}
+            onClose={() => clearErrors('root.server')}
           />
         )}
 
         {/* Form */}
-        <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
+        <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
           
           {/* Username */}
           <div className="space-y-1.5">
@@ -104,17 +81,16 @@ export default function Register() {
             <input
               id="username"
               type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
               className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${
                 errors.username ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
               }`}
               placeholder="johndoe"
               disabled={isSubmitting}
+              {...register('username')}
             />
             {errors.username && (
               <p className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                {errors.username}
+                {errors.username.message}
               </p>
             )}
           </div>
@@ -127,17 +103,16 @@ export default function Register() {
             <input
               id="email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${
                 errors.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
               }`}
               placeholder="you@example.com"
               disabled={isSubmitting}
+              {...register('email')}
             />
             {errors.email && (
               <p className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                {errors.email}
+                {errors.email.message}
               </p>
             )}
           </div>
@@ -150,17 +125,16 @@ export default function Register() {
             <input
               id="password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
               className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${
                 errors.password ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
               }`}
               placeholder="••••••••"
               disabled={isSubmitting}
+              {...register('password')}
             />
             {errors.password && (
               <p className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                {errors.password}
+                {errors.password.message}
               </p>
             )}
           </div>
@@ -173,17 +147,16 @@ export default function Register() {
             <input
               id="confirmPassword"
               type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
               className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${
                 errors.confirmPassword ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
               }`}
               placeholder="••••••••"
               disabled={isSubmitting}
+              {...register('confirmPassword')}
             />
             {errors.confirmPassword && (
               <p className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                {errors.confirmPassword}
+                {errors.confirmPassword.message}
               </p>
             )}
           </div>
@@ -208,3 +181,4 @@ export default function Register() {
     </div>
   );
 }
+

@@ -1,56 +1,48 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '../context/AuthContext';
-import { CheckSquare, Loader2, CheckCircle2 } from 'lucide-react';
+import { resetPasswordSchema } from '../schemas/auth';
+import { CheckSquare, Loader2 } from 'lucide-react';
 
 import Alert from '../components/ui/Alert';
 
 export default function ResetPassword() {
   const { token } = useParams();
   const { resetPassword } = useAuth();
-
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [errors, setErrors] = useState({});
-  const [apiError, setApiError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const newErrors = {};
+  const {
+    register,
+    handleSubmit,
+    setError,
+    clearErrors,
+    formState: { errors, isSubmitting },
+  } = useForm({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: {
+      password: '',
+      confirmPassword: '',
+    },
+  });
 
-    if (!password) {
-      newErrors.password = 'Password is required.';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters.';
-    }
-
-    if (password !== confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match.';
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setErrors({});
-    setApiError('');
-    setIsSubmitting(true);
-
+  const onSubmit = async (data) => {
+    setSuccessMsg('');
     try {
-      await resetPassword(token, password);
+      await resetPassword(token, data.password);
       setSuccessMsg('Your password has been successfully reset.');
     } catch (err) {
       if (err.errors && Object.keys(err.errors).length > 0) {
-        setErrors(err.errors);
+        Object.keys(err.errors).forEach((key) => {
+          setError(key, { type: 'server', message: err.errors[key] });
+        });
       }
-      setApiError(err.message || 'Failed to reset password. The link may have expired.');
-    } finally {
-      setIsSubmitting(false);
+      setError('root.server', { message: err.message || 'Failed to reset password. The link may have expired.' });
     }
   };
+
+  const apiError = errors.root?.server?.message;
 
   return (
     <div className="flex min-h-[80vh] flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
@@ -83,13 +75,13 @@ export default function ResetPassword() {
           <Alert
             variant="error"
             message={apiError}
-            onClose={() => setApiError('')}
+            onClose={() => clearErrors('root.server')}
           />
         )}
 
         {/* Form */}
         {!successMsg && (
-          <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
             
             {/* Password */}
             <div className="space-y-1.5">
@@ -99,8 +91,6 @@ export default function ResetPassword() {
               <input
                 id="password"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
                 className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${
                   errors.password ? 'border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : ''
                 }`}
@@ -108,10 +98,11 @@ export default function ResetPassword() {
                 disabled={isSubmitting}
                 aria-invalid={!!errors.password}
                 aria-describedby={errors.password ? "password-error" : undefined}
+                {...register('password')}
               />
               {errors.password && (
                 <p id="password-error" className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                  {errors.password}
+                  {errors.password.message}
                 </p>
               )}
             </div>
@@ -124,8 +115,6 @@ export default function ResetPassword() {
               <input
                 id="confirmPassword"
                 type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
                 className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${
                   errors.confirmPassword ? 'border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : ''
                 }`}
@@ -133,10 +122,11 @@ export default function ResetPassword() {
                 disabled={isSubmitting}
                 aria-invalid={!!errors.confirmPassword}
                 aria-describedby={errors.confirmPassword ? "confirm-password-error" : undefined}
+                {...register('confirmPassword')}
               />
               {errors.confirmPassword && (
                 <p id="confirm-password-error" className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                  {errors.confirmPassword}
+                  {errors.confirmPassword.message}
                 </p>
               )}
             </div>
@@ -168,3 +158,4 @@ export default function ResetPassword() {
     </div>
   );
 }
+

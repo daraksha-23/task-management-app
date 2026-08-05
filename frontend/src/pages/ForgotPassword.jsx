@@ -1,52 +1,46 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '../context/AuthContext';
-import { validateEmail } from '../utils/taskValidation';
-import { CheckSquare, Mail, Loader2 } from 'lucide-react';
+import { forgotPasswordSchema } from '../schemas/auth';
+import { CheckSquare, Loader2 } from 'lucide-react';
 
 import Alert from '../components/ui/Alert';
 
 export default function ForgotPassword() {
   const { forgotPassword } = useAuth();
-  
-  const [email, setEmail] = useState('');
-  const [errors, setErrors] = useState({});
-  const [apiError, setApiError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setErrors({});
-    setApiError('');
+  const {
+    register,
+    handleSubmit,
+    setError,
+    clearErrors,
+    formState: { errors, isSubmitting },
+  } = useForm({
+    resolver: zodResolver(forgotPasswordSchema),
+    defaultValues: {
+      email: '',
+    },
+  });
+
+  const onSubmit = async (data) => {
     setSuccessMsg('');
-
-    const newErrors = {};
-    if (!email) {
-      newErrors.email = 'Email address is required.';
-    } else if (!validateEmail(email)) {
-      newErrors.email = 'Please provide a valid email format (e.g. name@domain.com).';
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setIsSubmitting(true);
-
     try {
-      await forgotPassword(email);
+      await forgotPassword(data.email);
       setSuccessMsg('A password reset link has been sent to your email.');
     } catch (err) {
       if (err.errors && Object.keys(err.errors).length > 0) {
-        setErrors(err.errors);
+        Object.keys(err.errors).forEach((key) => {
+          setError(key, { type: 'server', message: err.errors[key] });
+        });
       }
-      setApiError(err.message || 'Failed to send reset link. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+      setError('root.server', { message: err.message || 'Failed to send reset link. Please try again.' });
     }
   };
+
+  const apiError = errors.root?.server?.message;
 
   return (
     <div className="flex min-h-[80vh] flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
@@ -78,13 +72,13 @@ export default function ForgotPassword() {
           <Alert
             variant="error"
             message={apiError}
-            onClose={() => setApiError('')}
+            onClose={() => clearErrors('root.server')}
           />
         )}
 
         {/* Form */}
         {!successMsg && (
-          <form className="mt-6 space-y-5" onSubmit={handleSubmit} noValidate>
+          <form className="mt-6 space-y-5" onSubmit={handleSubmit(onSubmit)} noValidate>
             
             {/* Email field */}
             <div className="space-y-1.5">
@@ -94,8 +88,6 @@ export default function ForgotPassword() {
               <input
                 id="email"
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${
                   errors.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500 dark:border-red-500' : ''
                 }`}
@@ -103,10 +95,11 @@ export default function ForgotPassword() {
                 disabled={isSubmitting}
                 aria-invalid={!!errors.email}
                 aria-describedby={errors.email ? "email-error" : undefined}
+                {...register('email')}
               />
               {errors.email && (
                 <p id="email-error" className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                  {errors.email}
+                  {errors.email.message}
                 </p>
               )}
             </div>
@@ -138,3 +131,4 @@ export default function ForgotPassword() {
     </div>
   );
 }
+

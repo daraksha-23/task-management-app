@@ -1,80 +1,67 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '../../context/AuthContext';
+import { changePasswordSchema } from '../../schemas/auth';
 import Modal from '../ui/Modal';
 import Alert from '../ui/Alert';
 import { Loader2, KeyRound } from 'lucide-react';
 
 export default function ChangePasswordModal({ isOpen, onClose }) {
   const { changePassword } = useAuth();
-
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  
-  const [errors, setErrors] = useState({});
-  const [apiError, setApiError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    setError,
+    clearErrors,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm({
+    resolver: zodResolver(changePasswordSchema),
+    defaultValues: {
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    },
+  });
 
   const resetForm = () => {
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setErrors({});
-    setApiError('');
+    reset();
     setSuccessMsg('');
   };
+
+  useEffect(() => {
+    if (isOpen) {
+      resetForm();
+    }
+  }, [isOpen]);
 
   const handleClose = () => {
     resetForm();
     onClose();
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setErrors({});
-    setApiError('');
+  const onSubmit = async (data) => {
     setSuccessMsg('');
-
-    const newErrors = {};
-    if (!currentPassword) {
-      newErrors.currentPassword = 'Current password is required.';
-    }
-
-    if (!newPassword) {
-      newErrors.newPassword = 'New password is required.';
-    } else if (newPassword.length < 6) {
-      newErrors.newPassword = 'New password must be at least 6 characters.';
-    } else if (currentPassword === newPassword) {
-      newErrors.newPassword = 'New password cannot be the same as current password.';
-    }
-
-    if (newPassword !== confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match.';
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setIsSubmitting(true);
-
     try {
-      const res = await changePassword(currentPassword, newPassword);
+      const res = await changePassword(data.currentPassword, data.newPassword);
       setSuccessMsg(res.message || 'Password changed successfully!');
       setTimeout(() => {
         handleClose();
       }, 1800);
     } catch (err) {
       if (err.errors && Object.keys(err.errors).length > 0) {
-        setErrors(err.errors);
+        Object.keys(err.errors).forEach((key) => {
+          setError(key, { type: 'server', message: err.errors[key] });
+        });
       }
-      setApiError(err.message || 'Failed to change password. Please verify current password.');
-    } finally {
-      setIsSubmitting(false);
+      setError('root.server', { message: err.message || 'Failed to change password. Please verify current password.' });
     }
   };
+
+  const apiError = errors.root?.server?.message;
 
   return (
     <Modal
@@ -95,11 +82,11 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
 
         {/* API Error Alert */}
         {apiError && (
-          <Alert variant="error" message={apiError} onClose={() => setApiError('')} />
+          <Alert variant="error" message={apiError} onClose={() => clearErrors('root.server')} />
         )}
 
         {!successMsg && (
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
             
             {/* Current Password */}
             <div className="space-y-1.5">
@@ -109,8 +96,6 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
               <input
                 id="modal-current-password"
                 type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
                 className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${
                   errors.currentPassword ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
                 }`}
@@ -118,10 +103,11 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
                 disabled={isSubmitting}
                 aria-invalid={!!errors.currentPassword}
                 aria-describedby={errors.currentPassword ? "current-pass-error" : undefined}
+                {...register('currentPassword')}
               />
               {errors.currentPassword && (
                 <p id="current-pass-error" className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                  {errors.currentPassword}
+                  {errors.currentPassword.message}
                 </p>
               )}
             </div>
@@ -134,8 +120,6 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
               <input
                 id="modal-new-password"
                 type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
                 className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${
                   errors.newPassword ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
                 }`}
@@ -143,10 +127,11 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
                 disabled={isSubmitting}
                 aria-invalid={!!errors.newPassword}
                 aria-describedby={errors.newPassword ? "new-pass-error" : undefined}
+                {...register('newPassword')}
               />
               {errors.newPassword && (
                 <p id="new-pass-error" className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                  {errors.newPassword}
+                  {errors.newPassword.message}
                 </p>
               )}
             </div>
@@ -159,8 +144,6 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
               <input
                 id="modal-confirm-password"
                 type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
                 className={`block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition placeholder:text-slate-400 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none ${
                   errors.confirmPassword ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
                 }`}
@@ -168,10 +151,11 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
                 disabled={isSubmitting}
                 aria-invalid={!!errors.confirmPassword}
                 aria-describedby={errors.confirmPassword ? "confirm-pass-error" : undefined}
+                {...register('confirmPassword')}
               />
               {errors.confirmPassword && (
                 <p id="confirm-pass-error" className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
-                  {errors.confirmPassword}
+                  {errors.confirmPassword.message}
                 </p>
               )}
             </div>
