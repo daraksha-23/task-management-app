@@ -20,6 +20,7 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(changePasswordSchema),
+    mode: 'onTouched',
     defaultValues: {
       currentPassword: '',
       newPassword: '',

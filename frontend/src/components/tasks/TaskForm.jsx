@@ -20,6 +20,7 @@ export default function TaskForm({ initialData = {}, onSubmit, onCancel, submitB
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(taskSchema),
+    mode: 'onTouched',
     defaultValues: {
       title: initialData.title || '',
       description: initialData.description || '',

@@ -20,6 +20,7 @@ export default function ForgotPassword() {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(forgotPasswordSchema),
+    mode: 'onTouched',
     defaultValues: {
       email: '',
     },

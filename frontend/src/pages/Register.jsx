@@ -20,6 +20,7 @@ export default function Register() {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(registerSchema),
+    mode: 'onTouched',
     defaultValues: {
       username: '',
       email: '',
